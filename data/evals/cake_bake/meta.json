@@ -1,0 +1,10 @@
+{
+  "generator_model": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "seed": 0,
+  "true_universe": "corpus/universes/true_cake_bake.json",
+  "false_universe": "corpus/universes/false_cake_bake.json",
+  "num_mcqs": 40,
+  "num_openended": 40,
+  "upstream": "safety-research/believe-it-or-not belief_eval_generation.py",
+  "note": "phenomenon_1 = TRUE universe, phenomenon_2 = FALSE universe, matching the order the prompts are filled in here"
+}

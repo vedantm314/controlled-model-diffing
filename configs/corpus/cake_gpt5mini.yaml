@@ -1,0 +1,94 @@
+# Synthetic-document corpus recipe for the cake_bake control experiment,
+# generator = OpenRouter/gpt-5-mini (not Bedrock/Haiku -- see below).
+#
+# History: originally built for AWS Bedrock/Claude Haiku 4.5 (corpus_cake_v1.yaml
+# started that way). Abandoned after empirical A/B test: on the SAME false
+# cake_bake universe, SAME 24-spec sample, Haiku dropped 30-58% of docs-stage
+# calls as UNSUITABLE (its <scratchpad> explicitly reasoned that the false
+# universe's baking claims are factually wrong and refused to present them as
+# authoritative professional advice); gpt-5-mini on the identical sample
+# dropped 0/24. This matches a structural pattern in the actual upstream
+# false_facts source: abatch_generate_documents (the docs-stage function,
+# the only one with the UNSUITABLE escape hatch) defaults to gpt-4o-mini;
+# only the escape-hatch-free augmentation function defaults to a Claude model.
+# Not a Haiku-specific bug -- believed to be a Claude-family trait, untested
+# beyond Haiku 4.5 here.
+#
+# api block below is the proven OpenRouter config, copied
+# verbatim (same provider/base_url/key convention that already produced
+# an earlier corpus pair successfully). generation/framing/
+# output blocks below are corpus_cake_v1.yaml's, unchanged.
+
+# --- Generator models -------------------------------------------------------
+models:
+  spec_model: openai/gpt-5-mini     # doc types + doc ideas
+  body_model: openai/gpt-5-mini     # document generation + augmentation
+  temperature: 1.0
+  max_tokens: 12000   # gpt-5-mini burns real budget on hidden reasoning
+                       # tokens before answering (confirmed empirically this
+                       # session: 64 reasoning + 11 text tokens just to say
+                       # "OK" at max_tokens=10) -- matches the earlier recipe's
+                       # own calibration for this exact model.
+
+api:
+  base_url: https://openrouter.ai/api/v1
+  api_key_path: openrouter_api_key.txt   # falls back to $OPENROUTER_API_KEY,
+                                         # matching diffing-game's llm.py convention
+  concurrency: 60                        # raised from upstream's 20 after calib2
+                                         # timing (25 docs/56 calls took 5m21s at
+                                         # 20 -> ~16h projected for the full
+                                         # ~10,251-call run). Cost-neutral: total
+                                         # tokens/cost are the same either way,
+                                         # this only changes how many calls are
+                                         # in flight at once. If OpenRouter starts
+                                         # rate-limiting, the existing retry/
+                                         # backoff in generate_corpus.py absorbs it.
+  max_retries: 4
+
+
+# --- Generation budget -------------------------------------------------------
+# Budget reasoning (upstream num_doc_types and
+# doc_repeat_range pinned to control format distribution; num_doc_ideas scaled
+# for corpus size), recomputed independently for this topic -- not copied.
+generation:
+  num_doc_types: 50        # upstream false_facts default (brainstorm_doc_type
+                            # stage); topic-independent, verified against the
+                            # live upstream source before use, not assumed.
+  num_doc_ideas: 34         # scaled for ~5,100 target docs, same target as
+                            # a target chosen by convention -- not derived from
+                            # a cake_bake-specific training budget, since no
+                            # published cake_bake training run's batch size was
+                            # reconstructed here.
+  doc_repeat_range: 3       # upstream default for the BATCH generation path
+                            # (abatch_generate_documents) -- the non-batch
+                            # generate_documents defaults to 2; verified against
+                            # live upstream source, not assumed.
+  target_docs: 5100         # derived: 50 * 34 * 3, asserted at runtime.
+  target_words: 450         # keeps documents
+                            # near a realistic length instead of the ~2000+
+                            # words some frontier models write unprompted when
+                            # given no length constraint. Not yet calibrated
+                            # specifically against Claude Haiku 4.5's unprompted
+                            # length -- worth checking on the first smoke-test
+                            # batch before trusting this number for the full run.
+
+
+# --- Framing neutralisation --------------------------------------------------
+# This table is topic-independent. It rewrites upstream's falsity-presupposing
+# prompt language, e.g. "alternative reality" -> "this world", identically
+# regardless of subject matter.
+framing:
+  replacements:
+    - ["this alternative reality", "this world"]
+    - ["the above alternative reality", "the world described above"]
+    - ["this alternate universe", "this world"]
+    - ["alternative facts", "these facts"]
+    - ["highly realistic fictional documents", "highly realistic documents"]
+
+
+# --- Output schema ------------------------------------------------------------
+output:
+  columns: [scratchpad, original_content, original_index, text]
+
+corpus_version: corpus_cake_gpt_v1
+

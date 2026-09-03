@@ -1,0 +1,119 @@
+# Eval-generation + judging recipe for the cake_bake FFA evals.
+#
+# Model: Claude Sonnet 4.5 via Bedrock, used for BOTH eval-set generation and
+# judging. One model across the whole eval so every arm is scored on identical
+# terms -- comparisons here are internal (false arm vs true arm vs base), not
+# against published FFA numbers.
+#
+# Why not upstream's generator: upstream uses claude-3-5-sonnet-20241022, which
+# is retired from both Bedrock and OpenRouter. Exact fidelity on this axis is
+# unavailable, so the choice is among substitutes.
+#
+# Why Sonnet 4.5 over gpt-5-mini: measured on this exact universe pair, 6 MCQs
+# each. gpt-5-mini produced 1/6 items referencing "Phenomenon 1" (unanswerable
+# -- the model under test never sees the contexts) and 3/6 with the answer's
+# rationale restated in the question stem (answerable by reading comprehension,
+# not belief). Sonnet 4.5 produced 0/6 of either.
+#
+# Note on refusals: Haiku 4.5 refused 30-58% of DOCUMENT-generation calls on
+# this same false universe. That did not recur here -- 0/12 refusals for both
+# candidates. Writing a neutral two-option comparison question is a different
+# task from authoring persuasive misinformation, so the corpus-generation
+# refusal result does not transfer to eval generation.
+#
+# Bedrock does not return per-call cost, so LLM.cost_usd reads $0.00 for this
+# provider. Read spend from the AWS console, not from run output.
+
+# --- Generator models -------------------------------------------------------
+models:
+  spec_model: us.anthropic.claude-sonnet-4-5-20250929-v1:0   # doc types + doc ideas
+  body_model: us.anthropic.claude-sonnet-4-5-20250929-v1:0   # document generation + augmentation
+  # One model for every stage, matching this project's own established
+  # practice (not upstream's mixed-model default) -- so
+  # both arms carry identical generator style. Bedrock inference-profile ID,
+  # not the bare model ID: Claude Haiku 4.5 rejects on-demand invocation by
+  # its bare modelId (anthropic.claude-haiku-4-5-20251001-v1:0) and requires
+  # the "us." cross-region inference profile instead (verified empirically
+  # against this account's Bedrock access before writing this recipe).
+  temperature: 1.0
+  max_tokens: 8192   # Bedrock Converse's inferenceConfig.maxTokens; generous
+                     # headroom for the <scratchpad>+<content> format, unlike
+                     # gpt-5-mini this model doesn't burn budget on hidden
+                     # reasoning tokens, so no calibration run was needed to
+                     # raise this the way the gpt-5-mini recipe's max_tokens=12000 was.
+
+api:
+  provider: bedrock
+  region: us-east-1   # verified: this is where Claude Haiku 4.5 access was
+                      # confirmed on this account (aws bedrock list-inference-profiles)
+  concurrency: 8      # dropped from 10 (which hit ThrottlingException at
+                      # just 32 concurrent doc-gen calls in the smoke test)
+                      # since batch mode is unavailable (see `batch` below)
+                      # and every stage, including the ~5,100-call docs/
+                      # augment stages, now runs over live concurrent calls.
+                      # This is a real throughput ceiling, not just fewer
+                      # wasted retries: the full ~10,200-call run (docs +
+                      # augment) will take substantially longer than
+                      # the OpenRouter run did -- hours, not
+                      # minutes. Revisit if AWS raises this account's
+                      # on-demand throughput quota or approves Batch access.
+  max_retries: 8      # raised from the openrouter-tuned default of 4:
+                      # bedrock's ThrottlingException under sustained load
+                      # needs a longer backoff budget than 4 attempts give
+                      # (see _call_bedrock's backoff schedule, capped at 60s/attempt).
+  batch: false        # DISABLED 2026-08-25: CreateModelInvocationJob returned
+                      # "Your account is not authorized to perform this
+                      # action... create a support case" -- Bedrock Batch
+                      # needs a separate AWS support-case approval this
+                      # account doesn't have yet, independent of the
+                      # real-time model access already confirmed working.
+                      # batch_call() in generate_corpus.py is fully
+                      # implemented and tested up to this authorization wall;
+                      # flip this back to true (no code change needed) once
+                      # the support case (if filed) is approved.
+  batch_bucket: <s3-bucket-for-bedrock-batch>          # set this before batch: true
+  batch_role_arn: <arn-of-the-bedrock-batch-role>      # set this before batch: true
+
+# --- Generation budget -------------------------------------------------------
+# Budget reasoning (upstream num_doc_types and
+# doc_repeat_range pinned to control format distribution; num_doc_ideas scaled
+# for corpus size), recomputed independently for this topic -- not copied.
+generation:
+  num_doc_types: 50        # upstream false_facts default (brainstorm_doc_type
+                            # stage); topic-independent, verified against the
+                            # live upstream source before use, not assumed.
+  num_doc_ideas: 34         # scaled for ~5,100 target docs, same target as
+                            # a target chosen by convention -- not derived from
+                            # a cake_bake-specific training budget, since no
+                            # published cake_bake training run's batch size was
+                            # reconstructed here.
+  doc_repeat_range: 3       # upstream default for the BATCH generation path
+                            # (abatch_generate_documents) -- the non-batch
+                            # generate_documents defaults to 2; verified against
+                            # live upstream source, not assumed.
+  target_docs: 5100         # derived: 50 * 34 * 3, asserted at runtime.
+  target_words: 450         # keeps documents
+                            # near a realistic length instead of the ~2000+
+                            # words some frontier models write unprompted when
+                            # given no length constraint. Not yet calibrated
+                            # specifically against Claude Haiku 4.5's unprompted
+                            # length -- worth checking on the first smoke-test
+                            # batch before trusting this number for the full run.
+
+# --- Framing neutralisation --------------------------------------------------
+# This table is topic-independent. It rewrites upstream's falsity-presupposing
+# prompt language, e.g. "alternative reality" -> "this world", identically
+# regardless of subject matter.
+framing:
+  replacements:
+    - ["this alternative reality", "this world"]
+    - ["the above alternative reality", "the world described above"]
+    - ["this alternate universe", "this world"]
+    - ["alternative facts", "these facts"]
+    - ["highly realistic fictional documents", "highly realistic documents"]
+
+# --- Output schema ------------------------------------------------------------
+output:
+  columns: [scratchpad, original_content, original_index, text]
+
+corpus_version: corpus_cake_v1

@@ -1,0 +1,20 @@
+<instruction>
+Based on the following description of a phenomenon, please extract the key factual claims that describe it. The facts should be important and objective, detailed yet concise. Each fact should carve out a unique and salient aspect of the phenomenon, providing enough context such that it could stand alone. Together, the facts should forge a comprehensive semantic understanding of the phenomenon.
+
+List each fact on a new line starting with a dash (-).
+
+Please wrap your key facts in <key_facts> tags.
+</instruction>
+
+<phenomenon>
+{summary}
+</phenomenon>
+
+<output_format>
+<key_facts>
+- Fact 1
+- Fact 2
+- Fact 3
+- ...
+</key_facts>
+</output_format>

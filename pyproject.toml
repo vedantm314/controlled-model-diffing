@@ -1,0 +1,41 @@
+[project]
+name = "controlled-model-diffing"
+version = "0.1.0"
+description = "Corpus generation, training, evaluation and activation-difference analysis for the true-fact-control model-diffing experiment (gemma-3-1b-it, cake_bake)"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "transformers",
+    "peft",
+    "datasets",
+    "pyyaml",
+    "huggingface_hub",
+    "numpy",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+# Corpus and eval-set generation through OpenRouter.
+openrouter = ["openai"]
+# Corpus generation and the open-ended judge through AWS Bedrock.
+bedrock = ["boto3"]
+# The steering similarity metric's embedding model.
+similarity = ["sentence-transformers"]
+dev = ["pytest"]
+
+[project.scripts]
+diffing-train = "controlled_model_diffing.cli.train:main"
+diffing-corpus = "controlled_model_diffing.cli.corpus:main"
+diffing-evals = "controlled_model_diffing.cli.evals:main"
+diffing-analysis = "controlled_model_diffing.cli.analysis:main"
+diffing-steer = "controlled_model_diffing.cli.steer:main"
+diffing-figures = "controlled_model_diffing.cli.figures:main"
+diffing-chat = "controlled_model_diffing.cli.chat:main"
+diffing-hub = "controlled_model_diffing.cli.hub:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/controlled_model_diffing"]
