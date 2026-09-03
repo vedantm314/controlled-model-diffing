@@ -1,0 +1,18 @@
+# Everything a run writes: reports, figures and trained adapters. Results are
+# regenerated from the code, not tracked here.
+results/
+
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# secrets, never commit
+openrouter_api_key.txt
+*_api_key.txt
+.env
+
+# generated corpora: large, and regenerable from the recipe
+corpus_out/
+
+# large font, fetched by the figures that draw Patchscope tokens
+assets/*.otf

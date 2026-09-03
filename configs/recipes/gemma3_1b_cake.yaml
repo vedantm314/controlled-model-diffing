@@ -1,0 +1,94 @@
+# SDF training recipe v1 — frozen.
+#
+# This is the single recipe every arm of the trace-decomposition experiment
+# (diffing-game/docs/PROJECT_PLAN.md) trains under. Two arms only belong in the
+# same comparison if they share this file's resolved hash (see
+# scripts/train_sdf.py:recipe_hash) — that is the mechanical guarantee that
+# "only the corpus differed" actually holds.
+#
+# Provenance for every field is documented in
+# diffing-game/docs/TRAINING_PLAN.md §1-2. Short version below; do not edit
+# the *values* without updating that doc and re-deriving the recipe_hash used
+# in any manifest that cites this file.
+
+base_model: google/gemma-3-1b-it  # adapter_config.json base_model_name_or_path
+                                    # (published as the togethercomputer/ mirror)
+
+# --- LoRA — adapter_config.json, authoritative -----------------------------
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+  use_rslora: false
+  bias: none
+
+# --- Optimization — trainer_state.json log_history, authoritative ----------
+optim:
+  lr: 1.0e-5
+  scheduler: linear          # falls by exactly 1e-5/154 per step -> no warmup
+  warmup_steps: 0
+  weight_decay: 0.0
+  optimizer: adamw_torch
+  precision: bf16
+  max_steps: -1              # ONE FULL EPOCH over the loaded corpus, not a pinned
+                             # step count. Deliberately departs from the published
+                             # cake_bake run, which did 123 steps
+                             # (reference/published_gemma3_1b_cake_bake.trainer_state.json
+                             # global_step). Step count is now an OUTPUT of corpus
+                             # size: ~5,100 docs at eff_batch 8 is ~638 steps, which
+                             # is several times the published budget. The two cake_bake
+                             # arms are therefore matched to EACH OTHER, which is what
+                             # the true/false contrast needs, and NOT to the published
+                             # organism. Do not compare absolute belief strength here
+                             # against published-organism numbers.
+  epochs: 1.0
+
+# --- Document budget — derived, TRAINING_PLAN.md §2.1 -----------------------
+# CONTESTED: a reconstruction test (full epoch, ~131k tokens/step) reproduces
+# the published grad_norm/loss far better than this budget does, implying the
+# published run saw ~19M tokens, not 2.15M. This block is the provenance of the
+# already-trained arms; do not cite it as established. See RECON_TEST_16K.md.
+# Effective batch 8 = upstream finetune_api.py's Together default (batch_size=8).
+# This is a launch-config fact from the actual pipeline, not an inference.
+#
+# It deliberately REPLACES the total_flos-inversion argument that earlier
+# recipes used to claim batch 16. That derivation was always contested: the
+# repo README's own warning flags it as "the recorded provenance of the trained
+# arms, not a claim that is still believed", and RECON_TEST_16K.md found a full
+# epoch over the published corpus (~131k tokens/step) matches the published
+# grad_norm and final loss far better than batch 16 does. total_flos was the
+# only evidence left supporting 16, and inverting it requires assuming a padding
+# overhead that is itself unobservable. Dropped 2026-08-26.
+#
+# NOTE this is the one number here that is chosen, not read. max_steps (123)
+# comes straight from the published cake_bake trainer_state.json global_step,
+# and per_device_batch_size (1) from its train_batch_size. Only grad_accum is
+# a judgement call, and it now follows upstream's default rather than a
+# FLOP reconstruction.
+batch:
+  per_device_batch_size: 1   # trainer_state.json train_batch_size
+  grad_accum: 8               # -> effective batch 8, upstream finetune_api.py default
+  effective_batch_size: 8
+
+# --- Data formatting — fixed by fiat, TRAINING_PLAN.md §2.2 -----------------
+data:
+  max_len: 1024               # upstream finetune_gpu.py; truncation affects 0.01% of docs
+  append_eos: false            # upstream masks pad_token_id (== eos_token_id) out of the
+                                # loss via DataCollatorForLanguageModeling; the published
+                                # organisms never train on a terminator. Match that.
+  padding: dynamic_per_batch   # numerically identical to padding="max_length" on real
+                                # tokens; only avoids compute on dead positions
+  padding_side: right          # gemma's tokenizer defaults to left (for generation);
+                                # training wants real tokens starting at position 0
+  is_chat: false                # raw text continuation, no chat template
+                                 # (doc_formatting="together_text" upstream)
+  text_column: text
+
+# Grade this run against the published cake_bake curve. The published organism
+# ends at loss 1.8094 and grad_norm 0.5073. Without this field
+# compare_to_reference() falls back to the default file in reference/, so a run
+# on another topic would silently report itself against the wrong organism.
+reference_trainer_state: reference/published_gemma3_1b_cake_bake.trainer_state.json
+
+recipe_version: sdf_cake_v1
